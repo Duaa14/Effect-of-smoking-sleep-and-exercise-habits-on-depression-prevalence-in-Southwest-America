@@ -1,0 +1,390 @@
+---
+title: "Effect of smoking, sleep, and exercise habits on depression prevalence in Southwest America"
+output:
+  html_document: default
+  pdf_document: default
+  
+  
+  
+---
+
+###### Duaa Alsaaideh
+
+
+
+#### Downloading the data from here: 
+
+https://www.kaggle.com/lplenka/brfss-data
+
+
+#### Loading Libraries
+
+* library(dplyr)
+* library(tidyverse)
+* library(plot3D)
+* library(jtools)
+* library(ggplot2)
+* library(cowplot)
+* library(corrplot)
+
+```{r results='hide',echo=FALSE,message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyverse)
+library(plot3D)
+library(jtools)
+library(ggplot2)
+library(cowplot)
+library(corrplot)
+```
+
+
+
+#### Reading the data
+ 
+* This dataset is about The Behavioral Risk Factor Surveillance System.
+
+```{r}
+sleep <- read.csv(file = "brfss2013.csv", header= TRUE, na.strings = c("","NA"))
+```
+
+
+
+#### Tidying data
+
+* Specific columns were selected, and filtered based on the American Southwest states and ages(18-34).
+
+```{r}
+states <- c('Arizona','Texas','California','Nevada','New Mexico','Colorado','Utah','Utah')
+ages <- c('Age 18 to 24','Age 25 to 29','Age 30 to 34')
+dep <- sleep %>% 
+  filter(X_state == states,X_ageg5yr == ages)%>%
+  select(X_state,addepev2, sleptim1,X_rfsmok3,exerany2,X_ageg5yr)
+```
+
+
+
+
+#### Checking the headers names
+
+
+```{r}
+names(dep)
+```
+
+
+#### Renaming the headers
+
+* Since the headers label were inappropriate.
+
+```{r}
+colnames(dep)[1] <- "State"
+colnames(dep)[2] <- "DepressionY"
+colnames(dep)[3] <- "Sleep_DurationX"
+colnames(dep)[4] <- "SmokingX"
+colnames(dep)[5] <- "ExercisingX"
+colnames(dep)[6] <- "Age"
+```
+
+
+
+#### Checking for null values in each column 
+
+* The State column
+
+```{r}
+sum(is.na(dep$State))
+```
+
+
+* The Depression column
+
+```{r}
+sum(is.na(dep$DepressionY))
+```
+
+* The Sleep Duration column
+
+```{r}
+sum(is.na(dep$Sleep_DurationX))
+```
+
+
+* The Smoking column
+
+```{r}
+sum(is.na(dep$SmokingX))
+```
+
+
+* The Exercising column
+
+```{r}
+sum(is.na(dep$ExercisingX))
+```
+
+
+* The Age column 
+
+```{r}
+sum(is.na(dep$Age))
+```
+
+
+
+
+#### Dealing with missing observations
+
+* The total number of the NA values is not too high, so we will drop them.
+
+
+```{r}
+dep <- na.omit(dep)
+```
+
+* Printing the first rows of the dataset to check that everything is good.
+
+```{r}
+head(dep)
+```
+
+#### Converting the yes and No to 1 and 0
+
+```{r}
+dep$DepressionY <- ifelse(dep$DepressionY=="No",0,1)
+dep$SmokingX <- ifelse(dep$SmokingX=="No",0,1)
+dep$ExercisingX <- ifelse(dep$ExercisingX=="No",0,1)
+head(dep)
+```
+
+
+#### Taking a look at the dataset
+
+
+```{r}
+str(dep)
+```
+
+
+#### Summary Statistics
+
+
+```{r}
+summary(dep)
+```
+
+#### Studying the distribution by building confusion matrix
+
+
+```{r}
+xtabs(~ SmokingX+DepressionY,data=dep)
+```
+
+
+
+
+```{r}
+xtabs(~ ExercisingX+DepressionY,data=dep)
+```
+ 
+#### Multiple Linear Regression on Sleep Duration and Depression 
+
+* This model shows a multiple linear regression, and provides insight into the reversibility of predictors and responses.
+
+
+```{r}
+# x, y, z variables
+x <- dep$DepressionY
+y <- dep$SmokingX
+z <- dep$Sleep_DurationX
+# Compute the linear regression (z = ax + by + d)
+fit <- lm(z ~ x + y)
+# predict values on regular x-y grid
+grid.lines = 26
+x.pred <- seq(min(x), max(x), length.out = grid.lines)
+y.pred <- seq(min(y), max(y), length.out = grid.lines)
+xy <- expand.grid( x = x.pred, y = y.pred)
+z.pred <- matrix(predict(fit, newdata = xy), 
+                 nrow = grid.lines, ncol = grid.lines)
+# fitted points for drop lines
+fitpoints <- predict(fit)
+# scatter plot with regression plane
+scatter3D(x, y, z, pch = 18, cex = 2, 
+    theta = 20, phi = 20, ticktype = "detailed",
+    xlab = "Depression Categorical", ylab = "", zlab = "Sleep Duration",  
+    surf = list(x = x.pred, y = y.pred, z = z.pred,  
+    facets = NA, fit = fitpoints), main = "MLR with Sleep Duration as Response")
+
+```
+
+
+
+#### Logistic Regression on Depression and It's Effects (Sleeping Duration,Smoking,and Exercising)
+
+
+* The below model is predicting Depression with the sleep, smoking, and exercise habits variables. The “Effects” x-axis is simply a staggering of the individuals in the dataset, and this plot shows the relative distribution of probabilities for depressed and not depressed individuals. We can see the model predicts a vast majority of the individuals to have a 10-20% chance of having depression diagnosis.
+
+
+```{r}
+log1 = glm(DepressionY ~ Sleep_DurationX+SmokingX+ExercisingX, data = dep, family = binomial)
+summary(log1)
+summ(log1)
+```
+
+
+
+```{r}
+predicted.dep <- data.frame(
+  probability.of.DepressionY=log1$fitted.values,
+  DepressionY=dep$DepressionY)
+ 
+predicted.dep <- predicted.dep[
+  order(predicted.dep$probability.of.DepressionY, decreasing=FALSE),]
+predicted.dep$rank <- 1:nrow(predicted.dep)
+ 
+## Lastly, we can plot the predicted probabilities for each sample having
+## Depression and color by whether or not they actually had Depression
+ggplot(data=predicted.dep, aes(x=rank, y=probability.of.DepressionY)) +
+  geom_point(aes(color=DepressionY), alpha=1, shape=4, stroke=2) +
+  xlab("Effects") +
+  ylab("Predicted probability of having Depression")+ggtitle("Deppression predicted by Sleeping Duration,Smoking,and Exercising ")
+```
+ 
+ 
+ 
+#### Ordinary vs Logistic Regression
+
+* The logistic regression was fitted with an ordinary linear regression, As shown in the model below, the probability to suffer from depression decreases as the sleep duration increases and exceeds the normal, recommended range of sleeping hours (7-9 hours a day).
+
+ 
+```{r}
+fit_glm = glm(DepressionY ~ Sleep_DurationX, data = dep, family = binomial)
+fit_glm
+fit_lm = lm(DepressionY ~ Sleep_DurationX, data = dep)
+```
+ 
+ 
+ 
+ 
+```{r}
+plot(jitter(DepressionY,factor = 0.2) ~ Sleep_DurationX, data = dep,
+  pch = 20, ylab = "Estimated Probability", xlab = "Sleep Duration",
+  main = "Ordinary vs Logistic Regression")
+grid()
+abline(fit_lm, col = "darkorange")
+curve(predict(fit_glm, data.frame(Sleep_DurationX = x), type = "response"),
+  add = TRUE, col = "dodgerblue", lty = 2)
+legend("topleft", c("Ordinary", "Logistic", "Data"), lty = c(1, 2, 0),
+  pch = c(NA, NA, 20), lwd = 2, col = c("darkorange", "dodgerblue", "black"))
+
+```
+ 
+ 
+* Here is the estimated coefficients. (With rounding, for simplicity.)
+  
+```{r}
+round(coef(fit_glm), 1)
+```
+ 
+#### Logistic Regression with decreasing Probability
+
+ 
+* The model below shows another model built predicting to show that smoking behaviors are positively correlated with depression diagnosis.
+ 
+```{r}
+fit_glm2 = glm(DepressionY ~ SmokingX, data = dep, family = binomial)
+```
+ 
+ 
+```{r}
+plot(jitter(DepressionY,factor = 0.2) ~ SmokingX, data = dep,
+  pch = 20, ylab = "Estimated Probability",xlab = "Sleep Duration",
+  main = "Logistic Regression, Decreasing Probability")
+grid()
+curve(predict(fit_glm2, data.frame(SmokingX = x), type = "response"),
+  add = TRUE, col = "dodgerblue", lty = 2)
+legend("bottomleft", c( "Estimated Probability", "Data"), lty = c(1, 2, 0),
+  pch = c(NA, NA, 20), lwd = 2, col = c( "dodgerblue", "black"))
+```
+
+ 
+ 
+#### Logistic Regression with Quadratic Relationship
+
+* A quadratic relationship was applied in the model below and it seems like this model is a better choice for this dataset, as it captures both ends of the sleep duration distribution. Those with very low sleep durations are almost exclusively in the depression category, and there is a non-zero chance of depression for very large sleep duration. In fact, higher sleep durations than the mean have a higher prediction percentage for depression probability.
+
+ 
+ 
+```{r}
+fit_glm3 = glm(DepressionY ~ Sleep_DurationX + I(Sleep_DurationX^2), data = dep, family = binomial)
+```
+ 
+ 
+ 
+```{r}
+plot(jitter(DepressionY,factor = 0.2)~ Sleep_DurationX, data = dep,
+  pch = 20, ylab = "Estimated Probability",xlab = "Sleep Duration",
+  main = "Logistic Regression, Quadratic Relationship")
+grid()
+curve(predict(fit_glm3, data.frame(Sleep_DurationX = x), type = "response"),
+  add = TRUE, col = "dodgerblue", lty = 2)
+curve(boot::inv.logit(-1.5 + 0.5 * x + x ^ 2),
+  add = TRUE, col = "darkorange", lty = 1)
+legend("bottomleft", c("True Probability", "Estimated Probability", "Data"), lty = c(1, 2, 0), pch = c(NA, NA, 20), lwd = 2, col = c("darkorange", "dodgerblue", "black"))
+```
+ 
+
+```{r}
+coef(summary(log1))
+```
+ 
+
+
+#### Heatmap
+
+* This heatmap indicates that there is a high correlation between depression and smoking whereas there is little/no correlation between depression and exercising.
+
+
+```{r}
+correlations <- cor(dep[,2:5])
+corrplot(correlations, method="circle")
+```
+
+
+
+
+
+### Counting how many depression we have across Southwest America
+
+* People without depression are around 520, where depressed people are around 100.
+
+```{r}
+# Bar-plot
+ggplot(dep, aes( x=DepressionY, fill=as.factor(DepressionY))) + 
+  geom_bar(width=0.3)+ scale_fill_hue(c = 40)+ggtitle("Depression Cases")+labs(x ="Depression",y = "Case")+labs(fill = "Depression")
+```
+
+
+#### Sleep Duration across many States
+
+
+* As shown in the model below, a box plot was visualized to display the sleep patterns over the American Southwest states. We can see that the sleep duration in most of the states ranges between 6-8 hours (25 to 75 percentile) and with a median around 7.5 hours. This means that most individuals within the study dataset sleep in the recommended, normal range of hours. 
+
+
+```{r}
+boxplot(Sleep_DurationX~State,
+data=dep,
+main="Different boxplots for each State",
+xlab="State",
+ylab="Sleep Duration",
+col="#866BBC",
+border="#0B0120"
+)
+```
+
+
+
+
+
+
+
+
